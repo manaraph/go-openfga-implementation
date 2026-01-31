@@ -10,3 +10,10 @@ build:
 run: 
 	go run ./cmd/api
 	
+# spin up local development container
+up:
+	docker compose up
+
+# shut down local development container
+down:
+	docker compose down

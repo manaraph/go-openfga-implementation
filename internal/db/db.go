@@ -23,7 +23,7 @@ func Init() {
 
 	db, err := sqlx.Connect("postgres", url)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("postgres DB: ", err)
 	}
 
 	DB = db

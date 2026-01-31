@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jmoiron/sqlx"
+	"github.com/manaraph/go-openfga-implementation/pkg/middleware"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -28,8 +30,13 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Post("/signup", auth.Signup)
 	r.Post("/login", auth.Login)
 
-	media := NewFileHandler(h.MongoDB)
-	r.Post("/upload", media.Upload)
+	authMiddleware := middleware.AuthMiddleware([]byte(os.Getenv("JWT_SECRET")))
+
+	r.Route("/files", func(r chi.Router) {
+		r.Use(authMiddleware)
+		media := NewFileHandler(h.MongoDB)
+		r.Post("/upload", media.Upload)
+	})
 }
 
 func apiResponse(w http.ResponseWriter, status int, payload any) {

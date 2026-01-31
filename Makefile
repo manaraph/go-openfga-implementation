@@ -2,6 +2,10 @@
 config: 
 	cp .env.example .env
 
+# Build 
+build: 
+	go mod tidy
+
 # Run server
 run: 
 	go run ./cmd/api

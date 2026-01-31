@@ -70,8 +70,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var userId int
 	var hashed string
-	err := h.DB.QueryRow("SELECT password FROM users WHERE username=$1", req.Username).Scan(&hashed)
+	err := h.DB.QueryRow("SELECT id, password FROM users WHERE username=$1", req.Username).Scan(&userId, &hashed)
 	if err != nil {
 		apiResponse(w, http.StatusUnauthorized, map[string]string{
 			"message": "invalid credentials: " + err.Error(),
@@ -87,6 +88,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id":  userId,
 		"username": req.Username,
 		"exp":      time.Now().Add(time.Hour * 3).Unix(),
 	})

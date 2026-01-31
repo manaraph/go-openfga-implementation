@@ -7,15 +7,19 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/gommon/log"
-	"github.com/manaraph/go-openfga-implementation/internal/db"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthHandler struct{}
+type AuthHandler struct {
+	DB *sqlx.DB
+}
 
-func NewAuth() *AuthHandler {
-	return &AuthHandler{}
+func NewAuth(db *sqlx.DB) *AuthHandler {
+	return &AuthHandler{
+		DB: db,
+	}
 }
 
 type authRequest struct {
@@ -43,7 +47,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = db.DB.Exec("INSERT INTO users (username, password) VALUES ($1, $2)", req.Username, string(hashed))
+	_, err = h.DB.Exec("INSERT INTO users (username, password) VALUES ($1, $2)", req.Username, string(hashed))
 	if err != nil {
 		apiResponse(w, http.StatusBadRequest, map[string]string{
 			"message": "user creation failed: " + err.Error(),
@@ -67,7 +71,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var hashed string
-	err := db.DB.QueryRow("SELECT password FROM users WHERE username=$1", req.Username).Scan(&hashed)
+	err := h.DB.QueryRow("SELECT password FROM users WHERE username=$1", req.Username).Scan(&hashed)
 	if err != nil {
 		apiResponse(w, http.StatusUnauthorized, map[string]string{
 			"message": "invalid credentials: " + err.Error(),
@@ -75,7 +79,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(hashed), []byte(req.Password)); err != nil {
+	if err = bcrypt.CompareHashAndPassword([]byte(hashed), []byte(req.Password)); err != nil {
 		apiResponse(w, http.StatusUnauthorized, map[string]string{
 			"message": "invalid credentials: " + err.Error(),
 		})

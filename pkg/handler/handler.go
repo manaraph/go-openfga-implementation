@@ -5,21 +5,31 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jmoiron/sqlx"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type Handler struct {
+	DB      *sqlx.DB
+	MongoDB *mongo.Database
 }
 
-func New() *Handler {
-	return &Handler{}
+func New(db *sqlx.DB, mongo *mongo.Database) *Handler {
+	return &Handler{
+		DB:      db,
+		MongoDB: mongo,
+	}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/health", h.health)
 
-	auth := NewAuth()
+	auth := NewAuth(h.DB)
 	r.Post("/signup", auth.Signup)
 	r.Post("/login", auth.Login)
+
+	media := NewFileHandler(h.MongoDB)
+	r.Post("/upload", media.Upload)
 }
 
 func apiResponse(w http.ResponseWriter, status int, payload any) {

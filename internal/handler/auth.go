@@ -3,7 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/gommon/log"
 	"github.com/manaraph/go-openfga-implementation/internal/db"
 	"golang.org/x/crypto/bcrypt"
@@ -28,6 +31,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		apiResponse(w, http.StatusBadRequest, map[string]string{
 			"message": "invalid request: " + err.Error(),
 		})
+
 		return
 	}
 
@@ -49,5 +53,51 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 
 	apiResponse(w, http.StatusCreated, map[string]string{
 		"message": "user created",
+	})
+}
+
+// POST /login
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req authRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiResponse(w, http.StatusBadRequest, map[string]string{
+			"message": "invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	var hashed string
+	err := db.DB.QueryRow("SELECT password FROM users WHERE username=$1", req.Username).Scan(&hashed)
+	if err != nil {
+		apiResponse(w, http.StatusUnauthorized, map[string]string{
+			"message": "invalid credentials: " + err.Error(),
+		})
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(hashed), []byte(req.Password)); err != nil {
+		apiResponse(w, http.StatusUnauthorized, map[string]string{
+			"message": "invalid credentials: " + err.Error(),
+		})
+		return
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"username": req.Username,
+		"exp":      time.Now().Add(time.Hour * 3).Unix(),
+	})
+
+	secret := os.Getenv("JWT_SECRET")
+	t, err := token.SignedString([]byte(secret))
+	if err != nil {
+		apiResponse(w, http.StatusInternalServerError, map[string]string{
+			"message": "error signing token: " + err.Error(),
+		})
+		return
+	}
+
+	apiResponse(w, http.StatusInternalServerError, map[string]string{
+		"message": "success",
+		"token":   t,
 	})
 }

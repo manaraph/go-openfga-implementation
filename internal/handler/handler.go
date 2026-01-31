@@ -19,6 +19,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 
 	auth := NewAuth()
 	r.Post("/signup", auth.Signup)
+	r.Post("/login", auth.Login)
 }
 
 func apiResponse(w http.ResponseWriter, status int, payload any) {

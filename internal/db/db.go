@@ -38,6 +38,5 @@ func Init() {
 	);`
 
 	DB.MustExec(schema)
-
 	log.Println("Connected to Postgres DB")
 }

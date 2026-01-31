@@ -11,6 +11,7 @@ import (
 
 func main() {
 	db.Init()
+	db.InitMongoDB()
 
 	r := chi.NewRouter()
 	h := handler.New()

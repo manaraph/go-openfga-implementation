@@ -1,6 +1,6 @@
-# Secure File Management with OpenFGA
+# Secure Access File Management with OpenFGA
 
-A simple Go implementation for secure file management using OpenFGA for Relationship-Based Access Control (ReBAC) and MongoDB for storage.
+A simple Go implementation for secure file access management using OpenFGA for Relationship-Based Access Control (ReBAC) and MongoDB for storage.
 
 ## Authorization Model
 

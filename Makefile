@@ -1,4 +1,5 @@
-# Copy environment config to .env server. Update configuratioin when done
+# Copy environment config to .env
+# Update configuration when as required
 config: 
 	cp .env.example .env
 
@@ -12,7 +13,7 @@ run:
 	
 # spin up local development container
 up:
-	docker compose up
+	docker compose up -d
 
 # shut down local development container
 down:

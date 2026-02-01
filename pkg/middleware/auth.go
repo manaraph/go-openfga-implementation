@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/gommon/log"
 )
 
 const UserIdKey string = "user_id"
@@ -36,7 +35,6 @@ func AuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 
 			claims := token.Claims.(jwt.MapClaims)
 			userID := int(claims["user_id"].(float64))
-			log.Infof("Logging userId: %v", userID)
 
 			ctx := context.WithValue(r.Context(), UserIdKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))

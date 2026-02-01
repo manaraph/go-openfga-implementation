@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/labstack/gommon/log"
 	"github.com/manaraph/go-openfga-implementation/internal/utils"
 	"github.com/openfga/go-sdk/client"
 	"go.mongodb.org/mongo-driver/bson"
@@ -33,7 +32,6 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	userID, ok := utils.UserIDFromContext(ctx)
-	log.Infof("Logging userId and ok: %v, %v", userID, ok)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return

@@ -106,15 +106,51 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) GetFiles(w http.ResponseWriter, r *http.Request) {
-	cursor, err := h.DB.Collection("fs.files").Find(r.Context(), bson.M{})
-	if err != nil {
-		http.Error(w, "failed to fetch files", http.StatusInternalServerError)
+	ctx := r.Context()
+	userID, ok := utils.UserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	defer cursor.Close(r.Context())
+
+	listRequest := client.ClientListObjectsRequest{
+		User:     "user:" + userID,
+		Relation: "owner",
+		Type:     "file",
+	}
+
+	fgaResp, err := h.FGA.ListObjects(ctx).Body(listRequest).Execute()
+	if err != nil {
+		http.Error(w, "failed to fetch permissions", http.StatusInternalServerError)
+		return
+	}
+
+	var fileOIDs []primitive.ObjectID
+	for _, obj := range fgaResp.GetObjects() {
+		// Strip the "file:" prefix
+		idStr := obj[len("file:"):]
+		oid, err := primitive.ObjectIDFromHex(idStr)
+		if err == nil {
+			fileOIDs = append(fileOIDs, oid)
+		}
+	}
+
+	if len(fileOIDs) == 0 {
+		apiResponse(w, http.StatusOK, map[string]any{"data": []any{}})
+		return
+	}
+
+	cursor, err := h.DB.Collection("fs.files").Find(ctx, bson.M{
+		"_id": bson.M{"$in": fileOIDs},
+	})
+	if err != nil {
+		http.Error(w, "failed to fetch files from db", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(ctx)
 
 	var files []map[string]any
-	if err := cursor.All(r.Context(), &files); err != nil {
+	if err := cursor.All(ctx, &files); err != nil {
 		http.Error(w, "failed to decode files", http.StatusInternalServerError)
 		return
 	}

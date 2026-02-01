@@ -48,6 +48,11 @@ func main() {
 		log.Fatal("FGA_STORE_ID is required")
 	}
 
+	fgaAuthId := os.Getenv("FGA_AUTH_MODEL_ID")
+	if fgaStoreId == "" {
+		log.Fatal("FGA_AUTH_MODEL_ID is required")
+	}
+
 	// Connect to Postgres DB
 	pg, err := db.ConnectPostgres(url)
 	if err != nil {
@@ -61,7 +66,7 @@ func main() {
 	}
 
 	// Initialize OpenFGA client
-	fga, err := authz.NewFGAClient(fgaUrl, fgaStoreId)
+	fga, err := authz.NewFGAClient(fgaUrl, fgaStoreId, fgaAuthId)
 	if err != nil {
 		log.Fatal("failed to initialize FGA client:", err)
 	}

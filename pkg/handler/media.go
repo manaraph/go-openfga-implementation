@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/labstack/gommon/log"
+	"github.com/manaraph/go-openfga-implementation/internal/utils"
+	"github.com/openfga/go-sdk/client"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -14,18 +17,27 @@ import (
 )
 
 type FileHandler struct {
-	DB *mongo.Database
+	DB  *mongo.Database
+	FGA *client.OpenFgaClient
 }
 
-func NewFileHandler(db *mongo.Database) *FileHandler {
+func NewFileHandler(db *mongo.Database, fga *client.OpenFgaClient) *FileHandler {
 	return &FileHandler{
-		DB: db,
+		DB:  db,
+		FGA: fga,
 	}
 }
 
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
-	_, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+
+	userID, ok := utils.UserIDFromContext(ctx)
+	log.Infof("Logging userId and ok: %v, %v", userID, ok)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	const maxSize = 10 << 20
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
@@ -71,8 +83,24 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fileID := uploadStream.FileID.(primitive.ObjectID).Hex()
+	body := client.ClientWriteRequest{
+		Writes: []client.ClientTupleKey{
+			{
+				User:     "user:" + userID,
+				Relation: "owner",
+				Object:   "file:" + fileID,
+			},
+		},
+	}
+	_, err = h.FGA.Write(ctx).Body(body).Execute()
+	if err != nil {
+		http.Error(w, "failed to write auth relationship", http.StatusInternalServerError)
+		return
+	}
+
 	apiResponse(w, http.StatusCreated, map[string]any{
-		"file_id":  uploadStream.FileID,
+		"file_id":  fileID,
 		"filename": header.Filename,
 	})
 }
@@ -97,7 +125,31 @@ func (h *FileHandler) GetFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
+
+	userID, ok := utils.UserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	body := client.ClientCheckRequest{
+		User:     "user:" + userID,
+		Relation: "viewer",
+		Object:   "file:" + id,
+	}
+
+	check, err := h.FGA.Check(ctx).Body(body).Execute()
+	if err != nil {
+		http.Error(w, "authorization error", http.StatusInternalServerError)
+		return
+	}
+
+	if check.Allowed == nil || !*check.Allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	oid, err := primitive.ObjectIDFromHex(id)
 	if err != nil {

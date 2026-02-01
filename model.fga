@@ -5,5 +5,5 @@ type user
 
 type file
   relations
-    define owner: [user]
-    define viewer: owner
+    define owner: [user]      # uploader
+    define viewer: owner       # default: owner can view

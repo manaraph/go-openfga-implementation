@@ -37,7 +37,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 
 	r.Route("/files", func(r chi.Router) {
 		r.Use(authMiddleware)
-		media := NewFileHandler(h.MongoDB)
+		media := NewFileHandler(h.MongoDB, h.FGA)
 		r.Post("/upload", media.Upload)
 		r.Get("/", media.GetFiles)
 		r.Get("/{id}", media.DownloadFile)

@@ -102,7 +102,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiResponse(w, http.StatusInternalServerError, map[string]string{
+	apiResponse(w, http.StatusOK, map[string]string{
 		"message": "success",
 		"token":   t,
 	})

@@ -9,8 +9,8 @@ import (
 )
 
 type Mongo struct {
-	Client   *mongo.Client
-	Database *mongo.Database
+	Client *mongo.Client
+	DB     *mongo.Database
 }
 
 func ConnectMongo(uri, dbName string) (*Mongo, error) {
@@ -27,7 +27,7 @@ func ConnectMongo(uri, dbName string) (*Mongo, error) {
 	}
 
 	return &Mongo{
-		Client:   client,
-		Database: client.Database(dbName),
+		Client: client,
+		DB:     client.Database(dbName),
 	}, nil
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
+	"github.com/manaraph/go-openfga-implementation/pkg/authz"
 	"github.com/manaraph/go-openfga-implementation/pkg/db"
 	"github.com/manaraph/go-openfga-implementation/pkg/handler"
 	"github.com/manaraph/go-openfga-implementation/pkg/server"
@@ -15,6 +16,11 @@ func main() {
 
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, reading from env vars")
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		log.Fatal("PORT is required")
 	}
 
 	url := os.Getenv("POSTGRES_URL")
@@ -32,6 +38,16 @@ func main() {
 		mongoDBName = "files_db"
 	}
 
+	fgaUrl := os.Getenv("FGA_URL")
+	if fgaUrl == "" {
+		log.Fatal("FGA_URL is required")
+	}
+
+	fgaStoreId := os.Getenv("FGA_STORE_ID")
+	if fgaStoreId == "" {
+		log.Fatal("FGA_STORE_ID is required")
+	}
+
 	// Connect to Postgres DB
 	pg, err := db.ConnectPostgres(url)
 	if err != nil {
@@ -43,13 +59,18 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to connect to mongo:", err)
 	}
-	log.Println("Connected to MongoDB")
+
+	// Initialize OpenFGA client
+	fga, err := authz.NewFGAClient(fgaUrl, fgaStoreId)
+	if err != nil {
+		log.Fatal("failed to initialize FGA client:", err)
+	}
 
 	r := chi.NewRouter()
-	h := handler.New(pg.DB, mg.Database)
+	h := handler.New(pg.DB, mg.DB, fga)
 	h.RegisterRoutes(r)
 
-	srv := server.New(":8080", r)
+	srv := server.New(":"+port, r)
 	if err := srv.Start(); err != nil {
 		log.Fatal(err)
 	}

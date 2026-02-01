@@ -8,18 +8,21 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jmoiron/sqlx"
 	"github.com/manaraph/go-openfga-implementation/pkg/middleware"
+	"github.com/openfga/go-sdk/client"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type Handler struct {
 	DB      *sqlx.DB
 	MongoDB *mongo.Database
+	FGA     *client.OpenFgaClient
 }
 
-func New(db *sqlx.DB, mongo *mongo.Database) *Handler {
+func New(db *sqlx.DB, mongo *mongo.Database, fga *client.OpenFgaClient) *Handler {
 	return &Handler{
 		DB:      db,
 		MongoDB: mongo,
+		FGA:     fga,
 	}
 }
 

@@ -1,11 +1,16 @@
 version: '3.8'
 
+networks:
+  openfga:
+
 services:
   postgres:
     image: postgres:17
     container_name: postgres
     ports:
       - '5432:5432'
+    networks:
+      - openfga
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
@@ -17,6 +22,37 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  migrate:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: openfga/openfga:latest
+    container_name: migrate
+    command: migrate
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/go_openfga_db?sslmode=disable
+    networks:
+      - openfga
+
+  openfga:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    image: openfga/openfga:latest
+    container_name: openfga
+    environment:
+      # - OPENFGA_LOG_LEVEL=debug
+      # - OPENFGA_HTTP_ADDR=0.0.0.0:8080
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/go_openfga_db?sslmode=disable
+      - OPENFGA_LOG_FORMAT=json
+    command: run
+    ports:
+      - '8080:8080'
+    networks:
+      - openfga
 
 volumes:
   postgres_data:

@@ -36,6 +36,17 @@ curl -X POST http://localhost:8080/stores/YOUR_STORE_ID/authorization-models \
   }'
 ```
 
+## Running the App
+
+- Clone Repo: `git clone https://github.com/manaraph/go-openfga-implementation.git`
+- Navigate to folder: `cd go-openfga-implementation`
+- Install dependencies: `go mod tidy`
+- Copy configuration to .env: `make config` and update the details with your own configuration.
+- Spin up local development container: `make up`
+- Run app: `make run`
+
+Note: Ensure the local development container is running and you have mongo DB installed and running.
+
 ## Available commands
 
 Run all commands from the project root.

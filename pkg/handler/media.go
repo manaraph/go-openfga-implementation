@@ -2,11 +2,14 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/manaraph/go-openfga-implementation/internal/utils"
 	"github.com/openfga/go-sdk/client"
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,24 +19,27 @@ import (
 )
 
 type FileHandler struct {
-	DB  *mongo.Database
-	FGA *client.OpenFgaClient
+	DB      *sqlx.DB
+	MongoDB *mongo.Database
+	FGA     *client.OpenFgaClient
 }
 
-func NewFileHandler(db *mongo.Database, fga *client.OpenFgaClient) *FileHandler {
+func NewFileHandler(db *sqlx.DB, mongoDB *mongo.Database, fga *client.OpenFgaClient) *FileHandler {
 	return &FileHandler{
-		DB:  db,
-		FGA: fga,
+		DB:      db,
+		MongoDB: mongoDB,
+		FGA:     fga,
 	}
 }
 
+// GET /files/upload
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
 	userID, ok := utils.UserIDFromContext(ctx)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		apiResponse(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
 
@@ -42,7 +48,8 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseMultipartForm(maxSize); err != nil {
 		apiResponse(w, http.StatusBadRequest, map[string]string{
-			"message": "file too large: " + err.Error(),
+			"message":      "file too large.",
+			"errorDetails": err.Error(),
 		})
 		return
 	}
@@ -56,7 +63,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	bucket, err := gridfs.NewBucket(h.DB)
+	bucket, err := gridfs.NewBucket(h.MongoDB)
 	if err != nil {
 		apiResponse(w, http.StatusInternalServerError, map[string]string{
 			"message": "failed to create bucket",
@@ -93,7 +100,10 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = h.FGA.Write(ctx).Body(body).Execute()
 	if err != nil {
-		http.Error(w, "failed to write auth relationship", http.StatusInternalServerError)
+		apiResponse(w, http.StatusInternalServerError, map[string]string{
+			"error":        "failed to write auth relationship",
+			"errorDetails": err.Error(),
+		})
 		return
 	}
 
@@ -103,23 +113,24 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /files
 func (h *FileHandler) GetFiles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := utils.UserIDFromContext(ctx)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		apiResponse(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
 
 	listRequest := client.ClientListObjectsRequest{
 		User:     "user:" + userID,
-		Relation: "owner",
+		Relation: "viewer",
 		Type:     "file",
 	}
 
 	fgaResp, err := h.FGA.ListObjects(ctx).Body(listRequest).Execute()
 	if err != nil {
-		http.Error(w, "failed to fetch permissions", http.StatusInternalServerError)
+		apiResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch permissions"})
 		return
 	}
 
@@ -138,18 +149,18 @@ func (h *FileHandler) GetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cursor, err := h.DB.Collection("fs.files").Find(ctx, bson.M{
+	cursor, err := h.MongoDB.Collection("fs.files").Find(ctx, bson.M{
 		"_id": bson.M{"$in": fileOIDs},
 	})
 	if err != nil {
-		http.Error(w, "failed to fetch files from db", http.StatusInternalServerError)
+		apiResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch files from db"})
 		return
 	}
 	defer cursor.Close(ctx)
 
 	var files []map[string]any
 	if err := cursor.All(ctx, &files); err != nil {
-		http.Error(w, "failed to decode files", http.StatusInternalServerError)
+		apiResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to decode files"})
 		return
 	}
 
@@ -158,47 +169,118 @@ func (h *FileHandler) GetFiles(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /files/{id}
 func (h *FileHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := chi.URLParam(r, "id")
+	fileID := chi.URLParam(r, "id")
 
 	userID, ok := utils.UserIDFromContext(ctx)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		apiResponse(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
 
 	body := client.ClientCheckRequest{
 		User:     "user:" + userID,
-		Relation: "viewer",
-		Object:   "file:" + id,
+		Relation: "owner",
+		Object:   "file:" + fileID,
 	}
 
 	check, err := h.FGA.Check(ctx).Body(body).Execute()
 	if err != nil {
-		http.Error(w, "authorization error", http.StatusInternalServerError)
+		apiResponse(w, http.StatusInternalServerError, map[string]string{
+			"error":        "authorization error",
+			"errorDetails": err.Error(),
+		})
 		return
 	}
 
 	if check.Allowed == nil || !*check.Allowed {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		apiResponse(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 
-	oid, err := primitive.ObjectIDFromHex(id)
+	oid, err := primitive.ObjectIDFromHex(fileID)
 	if err != nil {
-		http.Error(w, "invalid file id", http.StatusBadRequest)
+		apiResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid file id"})
 		return
 	}
 
-	bucket, _ := gridfs.NewBucket(h.DB)
+	bucket, _ := gridfs.NewBucket(h.MongoDB)
 	stream, err := bucket.OpenDownloadStream(oid)
 	if err != nil {
-		http.Error(w, "file not found", http.StatusNotFound)
+		apiResponse(w, http.StatusNotFound, map[string]string{"error": "file not found"})
 		return
 	}
 	defer stream.Close()
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	io.Copy(w, stream)
+}
+
+// POST /files/{id}/share
+func (h *FileHandler) ShareFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	fileID := chi.URLParam(r, "id")
+	ownerID, ok := utils.UserIDFromContext(ctx)
+	if !ok {
+		apiResponse(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	// Verify user is owner of the file before sharing
+	body := client.ClientCheckRequest{
+		User:     "user:" + ownerID,
+		Relation: "owner",
+		Object:   "file:" + fileID,
+	}
+	check, err := h.FGA.Check(ctx).Body(body).Execute()
+	if err != nil {
+		apiResponse(w, http.StatusInternalServerError, map[string]string{
+			"error":        "authorization error",
+			"errorDetails": err.Error(),
+		})
+		return
+	}
+
+	if check.Allowed == nil || !*check.Allowed {
+		apiResponse(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	// Lookup user ID in Postgres
+	var targetID int
+	err = h.DB.QueryRow("SELECT id FROM users WHERE username=$1", req.Username).Scan(&targetID)
+	if err != nil {
+		apiResponse(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		return
+	}
+
+	// Write viewer permission for user with id = targetID
+	reqBody := client.ClientWriteRequest{
+		Writes: []client.ClientTupleKey{
+			{
+				User:     "user:" + strconv.Itoa(targetID),
+				Relation: "collaborator",
+				Object:   "file:" + fileID,
+			},
+		},
+	}
+	_, err = h.FGA.Write(ctx).Body(reqBody).Execute()
+	if err != nil {
+		apiResponse(w, http.StatusInternalServerError, map[string]string{
+			"error":        "failed to write auth relationship",
+			"errorDetails": err.Error(),
+		})
+		return
+	}
+
+	apiResponse(w, http.StatusOK, map[string]string{
+		"message": "file shared",
+	})
 }

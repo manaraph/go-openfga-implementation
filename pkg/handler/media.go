@@ -36,7 +36,7 @@ func NewFileHandler(db *sqlx.DB, mongoDB *mongo.Database, fga *client.OpenFgaCli
 	}
 }
 
-// GET /files/upload
+// POST /files/upload
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()

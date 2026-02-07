@@ -16,15 +16,15 @@ type AuthHandler struct {
 	DB *sqlx.DB
 }
 
+type authRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 func NewAuth(db *sqlx.DB) *AuthHandler {
 	return &AuthHandler{
 		DB: db,
 	}
-}
-
-type authRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
 }
 
 // POST /signup

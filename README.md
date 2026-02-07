@@ -12,7 +12,18 @@ The service uses the following relationship logic:
 
 ### Setup the Model
 
-Run this curl command to configure your OpenFGA Store:
+- Spin up docker with the command `make up`. Once the container is running, the OpenFGA API should be available on http://localhost:8080
+- Generate your store id and authorization model id and update the environment variable with this values. If you encounter any issues with curl, you can send the request using Postman or a similar HTTP client.
+
+Run this curl command to configure your OpenFGA Store. You should get a response with a store id:
+
+```
+ curl -X POST http://localhost:8080/stores \
+  -H "Content-Type: application/json" \
+  -d '{"name":"files-store"}'
+```
+
+Run this curl command to configure your OpenFGA authorization model. You should get a response with an authorization model id:
 
 ```
 curl -X POST http://localhost:8080/stores/YOUR_STORE_ID/authorization-models \
@@ -52,7 +63,7 @@ curl -X POST http://localhost:8080/stores/YOUR_STORE_ID/authorization-models \
 - Navigate to folder: `cd go-openfga-implementation`
 - Install dependencies: `go mod tidy`
 - Copy configuration to .env: `make config` and update the details with your own configuration.
-- Spin up local development container: `make up`
+- Spin up local development container (docker - if not already running): `make up`
 - Run app: `make run`
 
 Note: Ensure the local development container is running and you have mongo DB installed and running.

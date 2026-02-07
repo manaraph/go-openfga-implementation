@@ -8,6 +8,7 @@ The service uses the following relationship logic:
 
 - A user who uploads a file is assigned the owner relation.
 - The viewer permission is automatically granted to the owner.
+- Only owners can share (or revoke access to) a file with a collaborator.
 
 ### Setup the Model
 
@@ -17,23 +18,32 @@ Run this curl command to configure your OpenFGA Store:
 curl -X POST http://localhost:8080/stores/YOUR_STORE_ID/authorization-models \
   -H "Content-Type: application/json" \
   -d '{
-    "schema_version": "1.1",
-    "type_definitions": [
-      { "type": "user" },
-      {
-        "type": "file",
-        "relations": {
-          "owner": { "this": {} },
-          "viewer": { "computedUserset": { "relation": "owner" } }
-        },
-        "metadata": {
-          "relations": {
-            "owner": { "directly_related_user_types": [{ "type": "user" }] }
+  "schema_version": "1.1",
+  "type_definitions": [
+    { "type": "user" },
+    {
+      "type": "file",
+      "relations": {
+        "owner": { "this": {} },
+        "collaborator": { "this": {} },
+        "viewer": {
+          "union": {
+            "child": [
+              { "computedUserset": { "relation": "owner" } },
+              { "computedUserset": { "relation": "collaborator" } }
+            ]
           }
         }
+      },
+      "metadata": {
+        "relations": {
+          "owner": { "directly_related_user_types": [{ "type": "user" }] },
+          "collaborator": { "directly_related_user_types": [{ "type": "user" }] }
+        }
       }
-    ]
-  }'
+    }
+  ]
+}'
 ```
 
 ## Running the App

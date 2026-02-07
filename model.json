@@ -1,30 +1,25 @@
 {
   "schema_version": "1.1",
   "type_definitions": [
-    {
-      "type": "user"
-    },
+    { "type": "user" },
     {
       "type": "file",
       "relations": {
-        "owner": {
-          "this": {}
-        },
+        "owner": { "this": {} },
+        "collaborator": { "this": {} },
         "viewer": {
-          "computedUserset": {
-            "relation": "owner"
+          "union": {
+            "child": [
+              { "computedUserset": { "relation": "owner" } },
+              { "computedUserset": { "relation": "collaborator" } }
+            ]
           }
         }
       },
       "metadata": {
         "relations": {
-          "owner": {
-            "directly_related_user_types": [
-              {
-                "type": "user"
-              }
-            ]
-          }
+          "owner": { "directly_related_user_types": [{ "type": "user" }] },
+          "collaborator": { "directly_related_user_types": [{ "type": "user" }] }
         }
       }
     }

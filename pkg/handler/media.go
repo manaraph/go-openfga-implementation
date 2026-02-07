@@ -24,6 +24,10 @@ type FileHandler struct {
 	FGA     *client.OpenFgaClient
 }
 
+type fileRequest struct {
+	Username string `json:"username"`
+}
+
 func NewFileHandler(db *sqlx.DB, mongoDB *mongo.Database, fga *client.OpenFgaClient) *FileHandler {
 	return &FileHandler{
 		DB:      db,
@@ -187,16 +191,11 @@ func (h *FileHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	check, err := h.FGA.Check(ctx).Body(body).Execute()
-	if err != nil {
-		apiResponse(w, http.StatusInternalServerError, map[string]string{
-			"error":        "authorization error",
+	if err != nil || !*check.Allowed {
+		apiResponse(w, http.StatusForbidden, map[string]string{
+			"error":        "forbidden: only owners can download file",
 			"errorDetails": err.Error(),
 		})
-		return
-	}
-
-	if check.Allowed == nil || !*check.Allowed {
-		apiResponse(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 
@@ -222,9 +221,16 @@ func (h *FileHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 func (h *FileHandler) ShareFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	fileID := chi.URLParam(r, "id")
+
 	ownerID, ok := utils.UserIDFromContext(ctx)
 	if !ok {
 		apiResponse(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	var req fileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 
@@ -235,23 +241,13 @@ func (h *FileHandler) ShareFile(w http.ResponseWriter, r *http.Request) {
 		Object:   "file:" + fileID,
 	}
 	check, err := h.FGA.Check(ctx).Body(body).Execute()
-	if err != nil {
-		apiResponse(w, http.StatusInternalServerError, map[string]string{
-			"error":        "authorization error",
+	if err != nil || !*check.Allowed {
+		apiResponse(w, http.StatusForbidden, map[string]string{
+			"error":        "forbidden: only owners can share access",
 			"errorDetails": err.Error(),
 		})
 		return
 	}
-
-	if check.Allowed == nil || !*check.Allowed {
-		apiResponse(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	var req struct {
-		Username string `json:"username"`
-	}
-	json.NewDecoder(r.Body).Decode(&req)
 
 	// Lookup user ID in Postgres
 	var targetID int
@@ -261,7 +257,7 @@ func (h *FileHandler) ShareFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write viewer permission for user with id = targetID
+	// Share access with target user
 	reqBody := client.ClientWriteRequest{
 		Writes: []client.ClientTupleKey{
 			{
@@ -282,5 +278,69 @@ func (h *FileHandler) ShareFile(w http.ResponseWriter, r *http.Request) {
 
 	apiResponse(w, http.StatusOK, map[string]string{
 		"message": "file shared",
+	})
+}
+
+// POST /files/{id}/revoke
+func (h *FileHandler) RevokeAccess(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	fileID := chi.URLParam(r, "id")
+
+	ownerID, ok := utils.UserIDFromContext(ctx)
+	if !ok {
+		apiResponse(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	var req fileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	// Verify user is owner of the file before sharing
+	body := client.ClientCheckRequest{
+		User:     "user:" + ownerID,
+		Relation: "owner",
+		Object:   "file:" + fileID,
+	}
+	check, err := h.FGA.Check(ctx).Body(body).Execute()
+	if err != nil || !*check.Allowed {
+		apiResponse(w, http.StatusForbidden, map[string]string{
+			"error":        "forbidden: only owners can revoke access",
+			"errorDetails": err.Error(),
+		})
+		return
+	}
+
+	// Lookup user ID in Postgres
+	var targetID int
+	err = h.DB.QueryRow("SELECT id FROM users WHERE username=$1", req.Username).Scan(&targetID)
+	if err != nil {
+		apiResponse(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		return
+	}
+
+	// Revoke access for target user
+	deleteBody := client.ClientWriteRequest{
+		Deletes: []client.ClientTupleKeyWithoutCondition{
+			{
+				User:     "user:" + strconv.Itoa(targetID),
+				Relation: "collaborator",
+				Object:   "file:" + fileID,
+			},
+		},
+	}
+	_, err = h.FGA.Write(ctx).Body(deleteBody).Execute()
+	if err != nil {
+		apiResponse(w, http.StatusInternalServerError, map[string]string{
+			"error":        "failed to write auth relationship",
+			"errorDetails": err.Error(),
+		})
+		return
+	}
+
+	apiResponse(w, http.StatusOK, map[string]string{
+		"message": "access revoked",
 	})
 }

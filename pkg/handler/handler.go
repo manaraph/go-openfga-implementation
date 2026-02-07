@@ -42,6 +42,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 		r.Get("/", media.GetFiles)
 		r.Get("/{id}", media.DownloadFile)
 		r.Post("/{id}/share", media.ShareFile)
+		r.Post("/{id}/revoke", media.RevokeAccess)
 	})
 }
 

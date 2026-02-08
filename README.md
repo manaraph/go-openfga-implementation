@@ -72,7 +72,7 @@ Note: Ensure the local development container is running and you have mongo DB in
 
 Run all commands from the project root.
 
-### Copy .env file files
+### Copy environment config to .env
 
 ```
 make config
@@ -81,16 +81,22 @@ make config
 Copy environment config from .env.example to .env
 Update configuration as required
 
-### Build the project
+### Tidy modules and build the binary
 
 ```
 make build
 ```
 
-### Run the project
+###  Run the application directly using go run
 
 ```
 make run
+```
+
+### Build the binary and run it
+
+```
+make start
 ```
 
 ### Spin up local development container
@@ -105,4 +111,10 @@ Use `docker logs -f openfga` to view openfga logs
 
 ```
 make down
+```
+
+### Remove build artifacts and tidy Go cache
+
+```
+make clean
 ```
